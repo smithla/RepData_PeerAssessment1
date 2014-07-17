@@ -1,20 +1,211 @@
-# Reproducible Research: Peer Assessment 1
+---
+title: 'Peer Assessment #1'
+author: "Lance Smith"
+date: "Thursday, July 17, 2014"
+output: html_document
+---
+
+ This is an analysis of the the step data collected over a period 
+ of 61 days
+ 
+ Function Block
+
+ getStats - takes a dataframe and calculates the mean, median and sum of the steps column. It throws out any observation with zero steps. It returns a character vector with the three values
+ 
+ convertToDF - takes a list of character vectors and converts them to a dataframe
+```{r,echo=TRUE}
+getStats <- function(x) {
+        day <- x[1,2]
+        steps <- length(x$steps)
+        #zeros <- nrow(x[which(x$steps == 0),])
+        intervalsWithSteps <- x[which(x$steps != 0),]
+        meanSteps <- mean(intervalsWithSteps$steps)
+        theMedian <- median(intervalsWithSteps$steps)
+        theSum <- sum(intervalsWithSteps$steps)
+        c(date=day,mean=meanSteps,median=theMedian,total=theSum)
+}
+
+# convert list into dataframe
+convertToDF <- function(x) {
+        theDay <- character()
+        theMean <- numeric()
+        theMedian <- numeric()
+        theSum <- numeric()
+        for (i in daytotals) {
+                df <- i
+                names(df) <- NULL
+                theDay <- append(theDay,df[1])
+                theMean <- append(theMean,as.numeric(df[2]))
+                theMedian <- append(theMedian,as.numeric(df[3]))
+                theSum <- append(theSum,as.numeric(df[4]))
+        }
+        return(data.frame(day=theDay,mean=round(theMean,2),median=round(theMedian,2),Total=theSum,stringsAsFactors=F))
+}
+
+```
 
 
-## Loading and preprocessing the data
+<b>Part 1 - Loading and preprocessing the data.</b>
+<br>Edit the first line below to set the working directy to the location of the data file
 
+```{r,echo=TRUE}
+setwd("~/Dropbox/Coursera/JHDS/Rresearch")
+data <- read.csv("activity.csv",stringsAsFactors=F)
 
+# Check the data
+dim(data)
+str(data)
 
-## What is mean total number of steps taken per day?
+```
+ Preprocess the data. For the first part of the analysis, I am splitting the data into two groups: one with complete cases and one without
+ 
+```{r,echo=TRUE}
+good <- complete.cases(data)
+goodData <- data[good,]
+badData <- data[!good,]
+```
+ How many days of good data?
+```{r,echo=TRUE}
+completeDays <- length(unique(goodData$date))
+completeDays
+```
+ <b>Part 2 - What is the mean total number of steps take per day?</b>
+ 
+ Split the dataset by date
 
+```{r,echo=TRUE}
+days.list <- split(goodData,goodData$date)
+```
+ What is the mean total number of steps taken per day? The getStats function ignores zero days in the calculation. I did that to give meaningful numbers to the mean and median. Otherwise, they would have been close to or at zero for most days.
+```{r,echo=TRUE}
+daytotals <- lapply(days.list,getStats)
+dfTotals <- convertToDF(daytotals)
+```
+Mean and median for each good day. 
+```{r,echo=TRUE}
+dfTotals
+```
+Histogram
+```{r,echo=TRUE}
+hist(dfTotals$Total,xlab="Interval",main="Steps per Interval (NAs removed) ",freq=T,breaks=20)
+```
+ <p>Part 3 What is the average daily activity
+ 
+```{r,echo=TRUE}
+avgSteps <- tapply(goodData$steps,goodData$interval,mean)
+intervals <- as.integer(names(avgSteps))
+plot(intervals,avgSteps,type="l")
+```
+<p>The inteval with the max number of steps is 835. The average number of steps take is 206 in this interval
 
+```{r,echo=TRUE}
+avgSteps[avgSteps == max(avgSteps)]
+```
+<b>Part 4 Imputing missing values</b>
 
-## What is the average daily activity pattern?
+Look at the good data
+```{r,echo=TRUE}
+dim(goodData)
+str(goodData)
+head(goodData)
+```
+Look at the bad data
+```{r,echo=TRUE}
+dim(badData)
+str(badData)
+head(badData)
+```
+All the bad data seems to be in the steps column. Which days have no data?
+```{r,echo=TRUE}
+unique(badData$date)
+```
+Verify these dates are not id the good data
+```{r,echo=TRUE}
+setdiff(badData$date,goodData$date)
+```
+Total number of missing values
+```{r,echo=TRUE}
+missing <- nrow(badData)
+```
+Impute stratgy - use the 5 minute average and adjust the value using div/mod to find the floor/ceiling
+```{r,echo=TRUE}
+imputed <- sapply(avgSteps,function(x) {
+        div <- x%/% 1
+        mod <- x%% 1
+        if(mod > 0.5) {
+                div <- div + 1
+        }
+        return(div)
+})
+```
+Add the imputed data to the badData frame. Since there are 8 days of bad data, just replicate the imputed data 8 times and apply it to the dataframe
+```{r,echo=TRUE}
+badData$steps <- rep(imputed,8)
+head(badData,10)
+```
+Create a new dataset with no missing values
+```{r,echo=TRUE}
+imputedData <- rbind(goodData,badData)
+```
+Get the median,mean and histogram
+```{r,echo=TRUE}
+days.list <- split(imputedData,imputedData$date)
+daytotals <- lapply(days.list,getStats)
+imputedTotals <- convertToDF(daytotals)
+```
+Mean,median and histogram
+```{r,echo=TRUE}
+imputedTotals
+```
+ Adding the imputed totals back into the dataset has distorted the graph. Intervals with lower averages have been depressed while those with higher average have been inflated. 
+ 
+```{r,echo=TRUE}
+hist(imputedTotals$Total,xlab="Interval",main="Steps per Interval (NAs imputed) ",freq=T,breaks=20)
+```
+<p>
 
+<b>Part 5 Are there differences in activity patterns between weekdays and weekends?</b>
+<br>
+Move date string to data objects and create a "day" factor using the weekdays function
+```{r,echo=TRUE}
+days <- as.Date(imputedData$date)
+imputedData$date <- days
+imputedData$day <- as.factor(weekdays(imputedData$date))
+```
+Split the data set into weekdays and weekends
+```{r,echo=TRUE}
+weekends <- imputedData[imputedData$day %in% c("Saturday","Sunday"),]
+weekdays <- imputedData[!imputedData$day %in% c("Saturday","Sunday"),]
+```
 
+Create a weekend averages dataframe
+```{r,echo=TRUE}
+avgStepsWeekend <- tapply(weekends$steps,weekends$interval,mean)
+SatSun <- as.integer(names(avgSteps))
+intervalData1 <- data.frame("average_steps"=avgStepsWeekend,"interval"=SatSun,"day_type"="Weekend")
+```
 
-## Imputing missing values
+Create a weekday averages dataframe
+```{r,echo=TRUE}
+avgStepsWeekday <- tapply(weekdays$steps,weekdays$interval,mean)
+MonFri <- as.integer(names(avgSteps))
+intervalData2 <- data.frame("average_steps"=avgStepsWeekday,"interval"=MonFri,"day_type"="Weekday")
+```
+Bind them together
+```{r,echo=TRUE}
+intervalDataAll <- rbind(intervalData1,intervalData2)
+```
+Create a two level factor from the "weekend,weekday" character strings
+```{r,echo=TRUE}
+intervalDataAll$day_type <- as.factor(intervalDataAll$day_type)
+```
 
+Use the new factor to split the graph into two facets
+```{r,echo=TRUE}
+library(ggplot2)
+ qplot(interval,average_steps,data=intervalDataAll,facets=day_type~.,geom=c("line"),
+      xlab="Intervals",ylab="Number of Steps")
+```
+<p>Based on the graphs, there is more activity during the afternoon hours on the weekends. While the highest activity is a spike during the
+weekday, the weekend sees more consistant activity durning the day.
 
-
-## Are there differences in activity patterns between weekdays and weekends?
